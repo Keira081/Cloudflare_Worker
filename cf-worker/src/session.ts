@@ -1,3 +1,4 @@
+//session.ts - Holds a connection and remembers data
 import { DurableObject } from 'cloudflare:workers';
 
 /*
@@ -59,15 +60,21 @@ export class SessionDO extends DurableObject {
 
 	// Called by runtime when message arrives
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-		console.log('DO received:', message);
+		const prevCount = (await this.ctx.storage.get<number>('messageCount')) ?? 0;
+		const newCount = prevCount + 1;
+		await this.ctx.storage.put('messageCount', newCount);
+
+		console.log(`DO received message #${newCount}: `, message);
 		console.log('WebSocket: ', WebSocket);
-		ws.send(`echo from Durable Oject: ${message}`);
+		ws.send(`echo from Durable Oject: message #${newCount}: ${message}`);
 	}
 
 	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
 		console.log('DO: client disconnected', code, reason);
 	}
 }
+// await ctx.storage.get<type>("name")
+// await cts.storage.put("name", value)
 
 //More on WebSocketPair
 /*
