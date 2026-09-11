@@ -1,4 +1,4 @@
-//session.ts - Holds a connection and remembers data
+//session.ts - Holds the WebSocket connection and remembers data
 import { DurableObject } from 'cloudflare:workers';
 
 /*
@@ -21,7 +21,24 @@ ws.onmessage = (event) => console.log("Got back: ", event.data);
 Splicing client onto network: client obj is joined withnetwork socket
 */
 
-export class SessionDO extends DurableObject {
+//New Browser Console Code (After not hard-coding sessionId):
+/**
+ * const sessionId = crypto.randomUUID();
+ * console.log("My session:", sessionId);
+ *
+ * const ws = new WebSocket(`ws://127.0.0.1:8787?sessionId=${sessionId}`);
+ * ws.onopen = () => {
+ * 	console.log("Connected!");
+ * 	ws.send("recent advances in RAG");
+ * };
+ *  ws.onmessage = (event) => console.log("Got back:", event.data);
+ */
+
+export interface Env {
+	RESEARCH_WORKFLOW: Workflow;
+}
+
+export class SessionDO extends DurableObject<Env> {
 	async fetch(request: Request): Promise<Response> {
 		const upgradeHeader = request.headers.get('Upgrade');
 
@@ -58,15 +75,38 @@ export class SessionDO extends DurableObject {
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	// Called by runtime when message arrives
+	// Called by runtime when message arrives from a specific ws
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-		const prevCount = (await this.ctx.storage.get<number>('messageCount')) ?? 0;
-		const newCount = prevCount + 1;
-		await this.ctx.storage.put('messageCount', newCount);
+		const query = message.toString();
+		console.log('Starting research for query: ', query);
 
-		console.log(`DO received message #${newCount}: `, message);
-		console.log('WebSocket: ', WebSocket);
-		ws.send(`echo from Durable Oject: message #${newCount}: ${message}`);
+		await this.env.RESEARCH_WORKFLOW.create({
+			params: {
+				query,
+				sessionId: this.ctx.id.toString(),
+				// every DO instance has a unique ID
+			},
+		});
+
+		ws.send(`Started researching: "${query}"`);
+	}
+
+	// Called directly by the Workflow via RPC
+	async pushUpdate(text: string) {
+		for (const ws of this.ctx.getWebSockets()) {
+			// and has the text sent out to each // runtime checks what sockets are open and belong to DO instance
+			ws.send(text);
+		}
+		/**
+		 * When would there be multiple sockets:
+		 *
+		 * Flow: Browser opens a WebSocket using  a specific session ID, that connection is handed to the DO
+		 *
+		 * Multiple connections can land in the same DO's sockect pool
+		 * ONLY IF they used the same session ID when connecting
+		 *
+		 *
+		 */
 	}
 
 	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
@@ -93,6 +133,9 @@ server.accept() signals it's NOT request-scoped
     instead it keeps the workers execution context pinned in memory until server.close()
 this.ctx.acceptWebSocket(server) - is server.accept() but with Hibernation
 
+Hibernation:
+Durable Object's JavaScript execution torn down while idle
+- the class instance, its in-memory properties, any local variables...
 Until you call server.accept()/this.ctx.acceptWebSocket(server), the server end of the pair exists but your code isn't actually wired up to receive or send on it
 
 When is plain in vain:
@@ -100,3 +143,13 @@ does this socket ever need to know about, coordinate with, or be reached by anyt
 
 Ex) 
 */
+
+/**
+ * RPC (remote procedure call)
+ * any public method you define on the class can be called straight through the stub
+ * - no fetch/Request/Response wrapping needed at all
+ * vs
+ *
+ * talk to SessionDO from outside - stub.fetch(request), like a tiny HTTP server
+ * - isn't local
+ */

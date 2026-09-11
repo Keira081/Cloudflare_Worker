@@ -27,6 +27,16 @@
 		},
 		//done once per class,
 	],
+	"workflows": [
+		{
+			"name": "RESEARCH_WORFLOW",
+			"binding": "RESEARCH_WORKFLOW", // name that shows up on env in code
+			"class_name": "ResearchWorkflow",
+		},
+	],
+	"ai": {
+		"binding": "AI",
+	},
 
 	/**
 	 * Smart Placement

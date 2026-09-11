@@ -1,4 +1,5 @@
 export { SessionDO } from './session';
+export { ResearchWorkflow } from './workflow';
 
 export interface Env {
 	// Defines the shapes of the env object
@@ -6,6 +7,7 @@ export interface Env {
 	// DurableObjectNamespace<...> - generic type
 	// import type { SessionDO } from "./session"; -> <import('./session').SessionDO>
 	//                                         shorthand^
+	RESEARCH_WORKFLOW: Workflow;
 }
 // Every binding you declare in wrangler.jsonc needs a matching entry
 // here so TypeScript knows it exists and what type it is
@@ -16,7 +18,21 @@ export default {
 	// env- Where bindings show up
 	// ctx - execution context
 	async fetch(request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		const id = env.SESSION_DO.idFromName('test-session');
+		const url = new URL(request.url);
+
+		if (url.pathname === '/start-workflow') {
+			const instance = await env.RESEARCH_WORKFLOW.create({
+				params: { query: 'reccent advance in RAG' },
+			});
+			return new Response(`Started workflow instance: ${instance.id}`);
+		}
+
+		const sessionId = url.searchParams.get('sessionId');
+		if (!sessionId) {
+			return new Response('Missing sessionId query parameter', { status: 400 });
+		}
+
+		const id = env.SESSION_DO.idFromName(sessionId);
 		const stub = env.SESSION_DO.get(id); // stub - a local proxy for the DO you hold and call methods on
 		return stub.fetch(request);
 	},
@@ -72,20 +88,20 @@ Hibernation: lets runtime keep raw TCP connection open while evicting the Durabl
 
 
 ______________________________________________________________________________
-            | Workers                       | Durable Object
+            | Workers                        | Durable Object
 ______________________________________________________________________________
-Location    | Everywhere at once            | One physical machine
+Location    | Everywhere at once             | One physical machine
 ______________________________________________________________________________         
-Lifetime    | Torn down after each request    | Persists across requests; 
-            |                               | can hibernate and be woken
+Lifetime    | Torn down after each request   | Persists across requests; 
+            |                                | can hibernate and be woken
 ______________________________________________________________________________
-Identity    | None — interchangeable        | Instance attached to ID
+Identity    | None — interchangeable         | Instance attached to ID
 ______________________________________________________________________________
-State        | None between invocations        | In-memory cache + attached 
-            |                               | durable storage
+State       | None between invocations       | In-memory cache + attached 
+            |                                | durable storage
 ______________________________________________________________________________                                            
-Use it for    | Stateless request handling,   | Anything that needs to be 
-            | routing, fan-out                | "the one place" something lives
+Use it for  | Stateless request handling,    | Anything that needs to be 
+            | routing, fan-out               | "the one place" something lives
             |                                | ex) sessions, counters,
             |                                | coordination, connections
 ______________________________________________________________________________
