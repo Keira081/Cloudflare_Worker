@@ -1,6 +1,7 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
 import { buildPlan } from './methodologyGuard';
 import { generateSourceQueries } from './queryGenerator';
+import { getArxivPopulationCount } from './sources/arxiv';
 
 type Params = {
 	query: string;
@@ -33,6 +34,10 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 			const result = buildPlan();
 			await sessionStub.pushUpdate(`Plan: sampling ${result.sampleSize} papers each from ${result.sources.join(', ')}`);
 			return result;
+			// Example object returned:
+			/**
+			 *
+			 */
 		});
 
 		const sourceQueries = await step.do('generate-queries', async () => {
@@ -40,6 +45,48 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 			console.log('Generated per-source queries:', queries);
 			await sessionStub.pushUpdate(`Queries prepared for ${plan.sources.length} sources.`);
 			return queries;
+			// Example object returned:
+			/**
+			 *
+			 */
+		});
+
+		const populationCounts = await step.do('count-population', async () => {
+			const counts: Record<string, number> = {}; // Tell me about this Record object
+
+			counts.arxiv = await getArxivPopulationCount(sourceQueries.arxiv);
+			counts.openalex = 100000;
+			counts.semanticscholar = 100000;
+
+			console.log('Population counts:', counts);
+			await sessionStub.pushUpdate(`Population counts: ${JSON.stringify(counts)}`);
+			return counts;
+			// Example object returned:
+			/**
+			 *
+			 */
+		});
+
+		function applyFinitePopulationCorrection(n0: number, N: number): number {
+			return Math.ceil(n0 / (1 + (n0 - 1) / N));
+		}
+
+		const refinedSampleSizes = await step.do('refine-sample-sizes', async () => {
+			const sizes: Record<string, number> = {};
+
+			console.log('In for (const source of plan.sources), plan.sources is: ', plan.sources);
+
+			for (const source of plan.sources) {
+				sizes[source] = applyFinitePopulationCorrection(plan.sampleSize, populationCounts[source]);
+			}
+
+			console.log('Refined sample sizes:', sizes);
+			await sessionStub.pushUpdate(`Refined sample sizes: ${JSON.stringify(sizes)}`);
+			return sizes;
+			// Example object returned:
+			/**
+			 *
+			 */
 		});
 
 		const results = await step.do('fetch-sources', async () => {
