@@ -1,8 +1,5 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
-import { buildPlan } from './methodologyGuard';
-import { generateSourceQueries } from './queryGenerator';
-import { getArxivPopulationCount } from './sources/arxiv';
-import { getOpenAlexPopulationCount } from './sources/openalex';
+import { uniqueOpenalexBatch } from './sources/openalex';
 
 type Params = {
 	query: string;
@@ -13,100 +10,115 @@ export interface Env {
 	SESSION_DO: DurableObjectNamespace<import('./session').SessionDO>;
 	AI: Ai;
 }
-/**
- * Flow:
- * plan - default sample size (Cochran baseline)
- * generate queries - LLM turns the topic into a real per-source query string
- * count-population - for each source, send a count-only call using that query string, get back N per source
- * refine-sample-sizes - apply the small population correction per source, using each source's own N
- * 			function applyPopulationCorrection(n0: number, N: number): number {
- *				return Math.ceil(n0 / (1 + (n0 - 1) / N));
- *			}
- * fetch-sources — pull the actual number of papers determined by step 4, using the queries from step 2
- */
+
+export type Paper = {
+	title: string;
+	abstract: string;
+	publicationYear: number;
+	oaStatus: string;
+	isOa: boolean;
+	oaUrl: string | null;
+};
+
 export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 	async run(event: WorkflowEvent<Params>, step: WorkflowStep) {
 		const { query, sessionId } = event.payload;
-
 		const id = this.env.SESSION_DO.idFromString(sessionId);
 		const sessionStub = this.env.SESSION_DO.get(id);
+		// the running, accumulated set across every batch, keeping track of papers already touched
+		const seenTitles = new Set<string>();
+		// the running, accumulated evidence set across every batch
+		const allPapers: Paper[] = [];
 
-		const plan = await step.do('plan', async () => {
-			const result = buildPlan();
-			await sessionStub.pushUpdate(`Plan: sampling ${result.sampleSize} papers each from ${result.sources.join(', ')}`);
-			return result;
-			// Example object returned:
-			/**
-			 * {
-			 * 	sources: [ 'arxiv', 'openalex', 'semanticscholar' ],
-			 * 	sampleSize: 97
-			 * }
-			 */
-		});
+		// const ontology = step.do('generate-ontology', async () => {
+		// 	return await generateOntology(this.env.AI, query);
+		// }); // §4.4 — Workers AI, schema-constrained Runs ONCE, before the loop —
+		//      the ontology doesn't change batch to batch, only how much has been
+		//      fetched from it does.
+		/**
+		 * const queries = expandOntologyToQueries(ontology); // plain code, deterministic
+		 * const exhaustedQueries = new Set<string>();
+		 * let queryIndex = 0;
+		 */
 
-		const sourceQueries = await step.do('generate-queries', async () => {
-			const queries = await generateSourceQueries(this.env.AI, query, plan.sources);
-			console.log('Generated per-source queries:', queries);
-			await sessionStub.pushUpdate(`Queries prepared for ${plan.sources.length} sources.`);
-			return queries;
-			// Example object returned:
-			/**
-			 * {
-			 * 	arxiv: 'RAG advances',
-			 * 	openalex: 'RAG recent developments',
-			 * 	semanticscholar: 'recent RAG progress'
-			 * }
-			 */
-		});
+		let saturated = false;
+		let batchNumber = 0;
+		const MAX_BATCHES = 5; // placeholder ceiling until real saturation logic exists —
+		//                        prevents an infinite loop while §4.6/§4.7 aren't built yet.
 
-		const populationCounts = await step.do('count-population', async () => {
-			const counts: Record<string, number> = {}; // Tell me about this Record object
+		/**
+			let queryIndex = 0;
 
-			// counts.arxiv = await getArxivPopulationCount(sourceQueries.arxiv);
-			counts.arxiv = 100000;
-			counts.openalex = await getOpenAlexPopulationCount(sourceQueries.openalex);
-			counts.semanticscholar = 100000;
+			while (exhaustedQueries.has(queries[queryIndex])) {
+			queryIndex++;
+			if (queryIndex >= queries.length) {
+				queryIndex = 0; // wrap back to the start — the actual cycling behavior
+			}
+			}
+			const currentQuery = queries[queryIndex];
+		 */
 
-			console.log('Population counts:', counts);
-			await sessionStub.pushUpdate(`Population counts: ${JSON.stringify(counts)}`);
-			return counts;
-			// Example object returned:
-			/**
-			 * { arxiv: 100000, openalex: 100000, semanticscholar: 100000 }
-			 */
-		});
+		while (!saturated && batchNumber < MAX_BATCHES) {
+			batchNumber++;
 
-		function applyFinitePopulationCorrection(n0: number, N: number): number {
-			console.log(`${n0} / (1 + (${n0} - 1) / ${N} = `, Math.ceil(n0 / ((1 + (n0 - 1)) / N)));
-			return Math.ceil(n0 / (1 + (n0 - 1) / N));
+			const fetchedBatch = await step.do('fetch-batch', async () => {
+				const fetched = await uniqueOpenalexBatch(query, seenTitles);
+				await sessionStub.pushUpdate(
+					[
+						`\n\nBatch ${batchNumber} - query: "${query}"`,
+						`Total population: ${fetched.totalMatching}`,
+						`Total discarded population for no abstract: ${fetched.discardedNoAbstract}`,
+						`Total discarded population for duplications: ${fetched.discardedDuplicates}`,
+					].join('\n\n'),
+				);
+
+				return fetched;
+			}); // §4.3 — OpenAlex paginated fetch
+
+			for (const p of fetchedBatch.papers) {
+				seenTitles.add(p.title.trim().toLowerCase());
+			}
+			allPapers.push(...fetchedBatch.papers);
+
+			// step.do(`embed-and-fuse-${batchNumber}`, ...)   // §4.5 — new hybrid retrieval module.
+			//   Ranks this batch's candidates against the ontology's terms via
+			//   embedding cosine similarity, fused with keyword confidence.
+
+			// step.do(`filter-relevance-${batchNumber}`, ...) // §4.6 — deterministic threshold.
+			//   Drops anything below the fused-score cutoff; only survivors
+			//   get added to whatever the Stats Engine treats as real evidence.
+
+			// step.do(`compute-stats-${batchNumber}`, ...)    // §4.7 — Stats Engine.
+			//   Runs on `allPapers` as accumulated so far — Wilson interval,
+			//   coverage disclosure, and this batch's saturation rate
+			//   (new_unique_relevant_this_batch / candidates_examined_this_batch).
+
+			// const saturationCheck = await step.do(`check-saturation-${batchNumber}`, async () => {
+			//   ...compare saturation rate + Wilson interval width against thresholds...
+			//   return { saturated: boolean, reason: string };
+			// }); // §4.6 — deterministic stop/continue
+			// saturated = saturationCheck.saturated;
+
+			// Temporary stand-in for the real saturation check above, so the
+			// loop is testable before §4.6/§4.7 exist:
+			if (fetchedBatch.exhaustedPop) {
+				saturated = true; // nothing left for this query — real stopping
+				//                   signal we already built, worth honoring now
+			}
 		}
 
-		const refinedSampleSizes = await step.do('refine-sample-sizes', async () => {
-			const sizes: Record<string, number> = {};
-
-			for (const source of plan.sources) {
-				console.log(`populationCounts[source] for ${source}: `, populationCounts[source]);
-				sizes[source] = applyFinitePopulationCorrection(plan.sampleSize, populationCounts[source]);
-			}
-
-			console.log('Refined sample sizes:', sizes);
-			await sessionStub.pushUpdate(`Refined sample sizes: ${JSON.stringify(sizes)}`);
-			return sizes;
-			// Example object returned:
-			/**
-			 * { arxiv: 97, openalex: 97, semanticscholar: 97 }
-			 */
+		const results = await step.do('results', async () => {
+			await sessionStub.pushUpdate(`Finished after ${batchNumber} batch(es). Total unique papers: ${allPapers.length}`);
+			return { papersFound: allPapers.length, batchesRun: batchNumber };
 		});
 
-		const results = await step.do('fetch-sources', async () => {
-			await sessionStub.pushUpdate(`Fetching from ${plan.sources.join(', ')}...`);
-			return { papersFound: 42 };
-		});
+		// step.do('synthesize', ...) // §4.8 — Workers AI, schema-constrained,
+		//   causal-inference guardrail. Runs once, after the loop, on the
+		//   final accumulated allPapers + whatever the Stats Engine computed.
 
 		const summary = await step.do('summarize', async () => {
-			const text = `Found ${results.papersFound} papers using ${plan.sources.join(', ')} (target sample size: ${plan.sampleSize})`;
-			await sessionStub.pushUpdate(text);
-			return text;
+			await sessionStub.pushUpdate(`summary of results ...`);
+			return '';
 		});
 
 		return summary;

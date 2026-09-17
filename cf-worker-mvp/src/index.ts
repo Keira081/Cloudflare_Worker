@@ -22,7 +22,7 @@ export default {
 
 		if (url.pathname === '/start-workflow') {
 			const instance = await env.RESEARCH_WORKFLOW.create({
-				params: { query: 'reccent advance in RAG' },
+				params: { query: 'recent advances in RAG' },
 			});
 			return new Response(`Started workflow instance: ${instance.id}`);
 		}
@@ -81,8 +81,10 @@ Durable Objects have...
         * Works by pinning the instance to one physical machine or storage
         * so unlike a worker that can be everywhere at once, it's in one place
             - Global distribution v. persistant memory
-            - Does that mean low latency doesn't apply with this model? how 
-              does it decide what location to attach to? 
+            - Does that mean low latency doesn't apply with this model? 
+            - how does it decide what location to attach to? 
+                Cloudflare creates the Durable Object in a data center closest 
+                to where the first request came from.
 Hibernation: lets runtime keep raw TCP connection open while evicting the Durable 
              Object's JavaScript out of memory when it's idle.
 
