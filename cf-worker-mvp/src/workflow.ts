@@ -1,5 +1,6 @@
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
 import { uniqueOpenalexBatch } from './sources/openalex';
+import type { Paper } from './sources/openalex';
 
 type Params = {
 	query: string;
@@ -10,15 +11,6 @@ export interface Env {
 	SESSION_DO: DurableObjectNamespace<import('./session').SessionDO>;
 	AI: Ai;
 }
-
-export type Paper = {
-	title: string;
-	abstract: string;
-	publicationYear: number;
-	oaStatus: string;
-	isOa: boolean;
-	oaUrl: string | null;
-};
 
 export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 	async run(event: WorkflowEvent<Params>, step: WorkflowStep) {

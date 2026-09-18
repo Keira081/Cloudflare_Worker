@@ -1,4 +1,11 @@
-import { Paper } from '../workflow';
+export type Paper = {
+	title: string;
+	abstract: string;
+	publicationYear: number;
+	oaStatus: string;
+	isOa: boolean;
+	oaUrl: string | null;
+};
 
 type FetchedObject = {
 	papers: Paper[];
@@ -47,13 +54,6 @@ export async function uniqueOpenalexBatch(query: string, seenTitles: Set<string>
 		const data = await fetchOpenAlexPapers(query, remaining);
 		const results = data.results;
 
-		totalFetched += data.results.length;
-		totalMatching = data.meta.count;
-
-		if (totalFetched >= totalMatching) {
-			exhaustedPop = true;
-		}
-
 		for (const result of results) {
 			const normalizedTitle = result.title.trim().toLowerCase();
 
@@ -79,6 +79,14 @@ export async function uniqueOpenalexBatch(query: string, seenTitles: Set<string>
 			reviewedTitles.add(normalizedTitle);
 			papers.push(paper);
 		}
+
+		totalFetched = papers.length + discardedDuplicates + discardedNoAbstract;
+		totalMatching = data.meta.count;
+
+		if (totalFetched >= totalMatching) {
+			exhaustedPop = true;
+		}
+
 		attempts++;
 	}
 
