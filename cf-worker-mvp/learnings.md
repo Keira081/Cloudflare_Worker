@@ -668,27 +668,7 @@ before checking `response.status` directly settled it.
 
 ---
 
-## 9. Wrangler config quick reference
-
-| Key                            | Purpose                                       |
-| ------------------------------ | --------------------------------------------- |
-| `main`                         | Entry file (`src/index.ts`)                   |
-| `compatibility_date`           | Pins runtime behavior to a date               |
-| `observability.enabled`        | Logs/traces in the dashboard                  |
-| `durable_objects.bindings`     | `name` (on `env`) → `class_name`              |
-| `migrations`                   | Storage backend per DO class (SQLite)         |
-| `workflows`                    | `binding` (on `env`) → `class_name`           |
-| `ai.binding`                   | Workers AI on `env.AI`                        |
-| `placement: { mode: "smart" }` | Smart Placement (optional)                    |
-| `vars` / secrets               | Env variables; use secrets for sensitive data |
-| `assets`                       | Static assets binding                         |
-| `services`                     | Service bindings between Workers              |
-
-Bindings docs: https://developers.cloudflare.com/workers/runtime-apis/bindings/
-
----
-
-## 10. Things considered and deliberately not built
+## 9. Things considered and deliberately not built
 
 Worth a real answer for "why not X," rather than leaving a silent gap:
 
