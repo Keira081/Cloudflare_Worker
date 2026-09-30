@@ -93,16 +93,3 @@ npx wrangler dev
 
 Open `client.html` in a browser and submit a query. It connects to `ws://127.0.0.1:8787` by default. To point it elsewhere, use `client.html?ws=wss://your-worker.workers.dev`.
 
-## Layout
-
-```
-src/
-  index.ts                  Worker entrypoint, routes by sessionId
-  session.ts                Session Durable Object
-  workflow.ts               Orchestrator Workflow
-  generateOntologyObject.ts Schema-constrained ontology generation
-  sources/openalex.ts       OpenAlex adapter
-  env.ts                    Shared binding types
-client.html                 Single-file demo client
-LEARNINGS.md                What I learned building this
-```
