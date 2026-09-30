@@ -6,6 +6,16 @@ Built entirely on Cloudflare's developer platform: Workers, Durable Objects, Wor
 
 > **Status: early-stage, in active development.** The session layer, OpenAlex fetching, and ontology generation work. The statistics, retrieval filtering, and synthesis layers have been designed but not built yet. The [status table](#status) is exact about what is and isn't done.
 
+## Contents
+
+- [The core idea](#the-core-idea)
+- [Architecture](#architecture)
+- [Design decisions](#design-decisions)
+- [Status](#status)
+- [Roadmap](#roadmap)
+- [Running it locally](#running-it-locally)
+- [Layout](#layout)
+
 ## The core idea
 
 An LLM is only used where language judgment is the actual task. Every consequential number is computed by deterministic code.
@@ -85,26 +95,29 @@ flowchart TD
 ## Running it locally
 
 ```bash
+cd cf-worker-mvp
 npm install
 npx wrangler login    # Workers AI needs a Cloudflare account
 npx wrangler dev
 ```
 
-Open `research-trends-client.html` in a browser and submit a query. It connects to `ws://127.0.0.1:8787` by default. To point it elsewhere, edit the `WORKER_WS_URL` constant near the top of the file.
+Open `cf-worker-mvp/src/research-trends-client.html` in a browser and submit a query. It connects to `ws://127.0.0.1:8787` by default. To point it elsewhere, edit the `WORKER_WS_URL` constant near the top of the file.
+
+The pipeline currently stops after ontology generation: you'll see the generated ontology come back as JSON. The OpenAlex batch loop is written but disabled in `workflow.ts` until the ontology stage is finished.
 
 ## Layout
 
 ```
 cf-worker-mvp/
   src/
-    index.ts                    Worker entrypoint, routes each request to its session DO
-    session.ts                  Session Durable Object (WebSocket + progress relay)
-    workflow.ts                 Research Workflow (orchestrates the pipeline)
-    generateOntologyObject.ts   Schema-constrained ontology generation (Workers AI)
-    sources/openalex.ts         OpenAlex adapter (random sample, dedup, top-up)
-    methodologyGuard.ts         Superseded Cochran sample-size approach, kept for reference
-    research-trends-client.html Single-file demo client
-  test/index.spec.ts            Vitest tests (Workers pool)
-  wrangler.jsonc                Bindings: Durable Object, Workflow, Workers AI
-  learnings.md                  What I learned building this
+    index.ts                     Worker entrypoint, routes each request to its session DO
+    session.ts                   Session Durable Object (WebSocket + progress relay)
+    workflow.ts                  Research Workflow (orchestrates the pipeline)
+    generateOntologyObject.ts    Schema-constrained ontology generation (Workers AI)
+    sources/openalex.ts          OpenAlex adapter (random sample, dedup, top-up)
+    methodologyGuard.ts          Superseded Cochran sample-size approach, kept for reference
+    research-trends-client.html  Single-file demo client
+  test/index.spec.ts             Vitest tests (Workers pool)
+  wrangler.jsonc                 Bindings: Durable Object, Workflow, Workers AI
+  learnings.md                   What I learned building this
 ```
