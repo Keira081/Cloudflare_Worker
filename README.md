@@ -1,5 +1,4 @@
-# Cloudflare_Worker
-# Research Radar
+# Research Trends
 
 An agent that answers research-trend questions ("what research is being done in the AI x Cybersecurity space?") by gathering evidence from a scholarly source using strict statically backed guardrails until it has enough to say something, then reporting its own coverage and confidence instead of asserting a number it can't back up.
 
@@ -58,7 +57,7 @@ flowchart TD
 | --- | --- |
 | Session Durable Object (hibernating WebSocket, RPC progress push) | Done |
 | OpenAlex adapter (random sample, abstract filtering, duplicate-title dedup, top-up retry) | Done |
-| Demo client (`client.html`) | Done |
+| Demo client (`research-trends-client.html`) | Done |
 | Ontology generation (multi-cluster, schema-constrained) | Working, still being tuned |
 | Deterministic duplicate-term check | In progress |
 | Ontology review checkpoint | In progress |
@@ -81,7 +80,7 @@ flowchart TD
 - Cross-topic overlap analysis (two independent evidence sets plus a comparison metric)
 - A clarification turn for ambiguous queries (e.g. a bare "RAG")
 - Multi-source retrieval
-- Exposing each analysis as an MCP tool so an external agent can route questions and answer follow-ups
+- Exposing each analysis as an MCP tool so an external agent can route questions, and answer follow-ups like "where did this come from" or "give me the paper list" using data this system already logs
 
 ## Running it locally
 
@@ -91,5 +90,4 @@ npx wrangler login    # Workers AI needs a Cloudflare account
 npx wrangler dev
 ```
 
-Open `client.html` in a browser and submit a query. It connects to `ws://127.0.0.1:8787` by default. To point it elsewhere, use `client.html?ws=wss://your-worker.workers.dev`.
-
+Open `research-trends-client.html` in a browser and submit a query. It connects to `ws://127.0.0.1:8787` by default. To point it elsewhere, edit the `WORKER_WS_URL` constant near the top of the file.
