@@ -10,11 +10,11 @@ Built entirely on Cloudflare's developer platform: Workers, Durable Objects, Wor
 
 An LLM is only used where language judgment is the actual task. Every consequential number is computed by deterministic code.
 
-| The model decides | Code decides |
-| --- | --- |
+| The model decides                                              | Code decides                                                  |
+| -------------------------------------------------------------- | ------------------------------------------------------------- |
 | Expanding a topic into synonyms, methods, and topic boundaries | Which papers count as relevant (a threshold on a fused score) |
-| Turning computed statistics into prose | When to stop retrieving (saturation and estimate stability) |
-| | Confidence intervals, coverage, significance |
+| Turning computed statistics into prose                         | When to stop retrieving (saturation and estimate stability)   |
+|                                                                | Confidence intervals, coverage, significance                  |
 
 The model never sees a number it could invent. The planned synthesis step requires every numeric claim to cite a specific stats-engine object (`stat_ref`), and a validator strips anything that doesn't trace back to one.
 
@@ -36,12 +36,12 @@ flowchart TD
     C -->|yes| Y[Synthesis<br/>Workers AI, stat_ref enforced]
 ```
 
-| Cloudflare product | Role |
-| --- | --- |
-| **Workers** | Stateless entrypoint that routes each connection to its session |
-| **Durable Objects** | One per session. Holds the hibernating WebSocket and relays progress updates from the Workflow over RPC |
-| **Workflows** | Orchestrates the retrieval loop. Steps are durable and retryable, so a rate-limited OpenAlex call doesn't lose the run |
-| **Workers AI** | Ontology generation now; embeddings and synthesis planned |
+| Cloudflare product  | Role                                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Workers**         | Stateless entrypoint that routes each connection to its session                                                        |
+| **Durable Objects** | One per session. Holds the hibernating WebSocket and relays progress updates from the Workflow over RPC                |
+| **Workflows**       | Orchestrates the retrieval loop. Steps are durable and retryable, so a rate-limited OpenAlex call doesn't lose the run |
+| **Workers AI**      | Ontology generation now; embeddings and synthesis planned                                                              |
 
 ## Design decisions
 
@@ -53,20 +53,20 @@ flowchart TD
 
 ## Status
 
-| Component | Status |
-| --- | --- |
-| Session Durable Object (hibernating WebSocket, RPC progress push) | Done |
-| OpenAlex adapter (random sample, abstract filtering, duplicate-title dedup, top-up retry) | Done |
-| Demo client (`research-trends-client.html`) | Done |
-| Ontology generation (multi-cluster, schema-constrained) | Working, still being tuned |
-| Deterministic duplicate-term check | In progress |
-| Ontology review checkpoint | In progress |
-| Ontology-to-query expansion | In progress |
-| Hybrid retrieval (embeddings + keyword fusion) | Planned |
-| Relevance filter and saturation-based stopping | Planned |
-| D1 storage (papers, coverage log) | Planned |
-| Stats engine (Wilson interval, coverage, Shannon diversity, Benjamini-Hochberg) | Planned |
-| Synthesis with `stat_ref` enforcement and a causal-language guardrail | Planned |
+| Component                                                                                 | Status                     |
+| ----------------------------------------------------------------------------------------- | -------------------------- |
+| Session Durable Object (hibernating WebSocket, RPC progress push)                         | Done                       |
+| OpenAlex adapter (random sample, abstract filtering, duplicate-title dedup, top-up retry) | Done                       |
+| Demo client (`research-trends-client.html`)                                               | Done                       |
+| Ontology generation (multi-cluster, schema-constrained)                                   | Working, still being tuned |
+| Deterministic duplicate-term check                                                        | In progress                |
+| Ontology review checkpoint                                                                | In progress                |
+| Ontology-to-query expansion                                                               | In progress                |
+| Hybrid retrieval (embeddings + keyword fusion)                                            | Planned                    |
+| Relevance filter and saturation-based stopping                                            | Planned                    |
+| D1 storage (papers, coverage log)                                                         | Planned                    |
+| Stats engine (Wilson interval, coverage, Shannon diversity, Benjamini-Hochberg)           | Planned                    |
+| Synthesis with `stat_ref` enforcement and a causal-language guardrail                     | Planned                    |
 
 ## Roadmap
 
@@ -91,3 +91,20 @@ npx wrangler dev
 ```
 
 Open `research-trends-client.html` in a browser and submit a query. It connects to `ws://127.0.0.1:8787` by default. To point it elsewhere, edit the `WORKER_WS_URL` constant near the top of the file.
+
+## Layout
+
+```
+cf-worker-mvp/
+  src/
+    index.ts                    Worker entrypoint, routes each request to its session DO
+    session.ts                  Session Durable Object (WebSocket + progress relay)
+    workflow.ts                 Research Workflow (orchestrates the pipeline)
+    generateOntologyObject.ts   Schema-constrained ontology generation (Workers AI)
+    sources/openalex.ts         OpenAlex adapter (random sample, dedup, top-up)
+    methodologyGuard.ts         Superseded Cochran sample-size approach, kept for reference
+    research-trends-client.html Single-file demo client
+  test/index.spec.ts            Vitest tests (Workers pool)
+  wrangler.jsonc                Bindings: Durable Object, Workflow, Workers AI
+  learnings.md                  What I learned building this
+```
