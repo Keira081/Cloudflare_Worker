@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Research Radar — console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #12201f;
+    --panel: #0d1716;
+    --text: #e9e6da;
+    --muted: #8fa39e;
+    --border: #24403c;
+    --progress: #6fb7a8;
+    --final: #e8a33d;
+    --final-bg: #1c1710;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 56px 20px 40px;
+  }
+
+  main {
+    width: 100%;
+    max-width: 640px;
+  }
+
+  h1 {
+    font-family: "Fraunces", serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 2.1rem;
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0 0 2px;
+    line-height: 1.5;
+  }
+
+  .session-id {
+    color: var(--muted);
+    font-size: 0.72rem;
+    opacity: 0.7;
+    margin: 0 0 28px;
+    word-break: break-all;
+  }
+
+  form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  input[type="text"] {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.9rem;
+    padding: 12px 14px;
+    border-radius: 3px;
+    outline: none;
+  }
+
+  input[type="text"]:focus {
+    border-color: var(--progress);
+  }
+
+  input[type="text"]::placeholder {
+    color: var(--muted);
+    opacity: 0.6;
+  }
+
+  button {
+    background: var(--progress);
+    color: #06110f;
+    border: none;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0 20px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  button:not(:disabled):hover {
+    filter: brightness(1.08);
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin-bottom: 26px;
+    min-height: 1em;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .status-dot.live { background: var(--progress); }
+  .status-dot.closed { background: #6b6459; }
+
+  .log {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 18px 18px 20px;
+    height: 420px;
+    overflow-y: auto;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(111, 183, 168, 0.025),
+      rgba(111, 183, 168, 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+
+  .log:empty::before {
+    content: "waiting for a query — nothing has run yet.";
+    color: var(--muted);
+    opacity: 0.55;
+    font-size: 0.82rem;
+  }
+
+  .entry {
+    display: flex;
+    gap: 10px;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    color: var(--progress);
+    margin-bottom: 10px;
+    white-space: pre-wrap;
+  }
+
+  .entry .marker {
+    flex-shrink: 0;
+    opacity: 0.85;
+  }
+
+  .entry.system {
+    color: var(--muted);
+  }
+
+  .entry.final {
+    display: block;
+    color: var(--text);
+    background: var(--final-bg);
+    border-left: 2px solid var(--final);
+    padding: 12px 14px;
+    border-radius: 2px;
+    margin: 14px 0;
+  }
+
+  .entry.final .marker {
+    display: block;
+    color: var(--final);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Research Radar</h1>
+  <p class="subtitle">Ask about a research trend. Each run streams its own evidence-gathering log below, ending in a synthesized report once it has enough to say something.</p>
+  <p class="session-id" id="sessionLine"></p>
+
+  <form id="queryForm">
+    <input type="text" id="queryInput" placeholder="e.g. recent advances in retrieval-augmented generation" autocomplete="off" />
+    <button type="submit" id="submitBtn">Start research</button>
+  </form>
+
+  <div class="status-row">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">idle</span>
+  </div>
+
+  <div class="log" id="log"></div>
+</main>
+
+<script>
+  // Point this at wherever `wrangler dev` is actually serving the Worker.
+  // Defaults to the standard local port; change if yours differs.
+  const WORKER_WS_URL = "ws://127.0.0.1:8787";
+
+  const logEl = document.getElementById("log");
+  const form = document.getElementById("queryForm");
+  const input = document.getElementById("queryInput");
+  const submitBtn = document.getElementById("submitBtn");
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const sessionLine = document.getElementById("sessionLine");
+
+  let socket = null;
+
+  function setStatus(mode, label) {
+    statusDot.className = "status-dot" + (mode ? " " + mode : "");
+    statusText.textContent = label;
+  }
+
+  function appendEntry(text, kind) {
+    const el = document.createElement("div");
+    el.className = "entry " + kind;
+    const marker = document.createElement("span");
+    marker.className = "marker";
+    marker.textContent = kind === "final" ? "FINAL REPORT" : kind === "system" ? "\u00b7" : "\u25b8";
+    const body = document.createElement("span");
+    body.textContent = text;
+    el.appendChild(marker);
+    el.appendChild(body);
+    logEl.appendChild(el);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // The backend currently streams plain progress strings via pushUpdate().
+  // Synthesis (schema-constrained JSON) isn't built yet, so there's no real
+  // structured "this is the final report" signal from the server yet.
+  // This is a temporary heuristic bridging that gap — once Synthesis ships
+  // a real schema, swap this for checking the actual message shape instead
+  // of sniffing text content.
+  function classifyMessage(raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.type === "final" || parsed.report)) {
+        return { kind: "final", text: parsed.report || JSON.stringify(parsed, null, 2) };
+      }
+    } catch (_) {
+      // not JSON — fall through to the plain-text heuristic below
+    }
+    if (/^summary of results/i.test(raw) || /^Finished after/i.test(raw)) {
+      return { kind: "final", text: raw };
+    }
+    return { kind: "progress", text: raw };
+  }
+
+  function startSession(query) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.close();
+    }
+
+    const sessionId = crypto.randomUUID();
+    sessionLine.textContent = "session " + sessionId;
+
+    setStatus("", "connecting\u2026");
+    submitBtn.disabled = true;
+
+    socket = new WebSocket(WORKER_WS_URL + "?sessionId=" + sessionId);
+
+    socket.onopen = () => {
+      setStatus("live", "connected \u2014 researching");
+      appendEntry("query: \u201c" + query + "\u201d", "system");
+      socket.send(query);
+    };
+
+    socket.onmessage = (event) => {
+      const { kind, text } = classifyMessage(event.data);
+      appendEntry(text, kind);
+    };
+
+    socket.onclose = () => {
+      setStatus("closed", "session closed");
+      submitBtn.disabled = false;
+    };
+
+    socket.onerror = () => {
+      setStatus("closed", "connection error \u2014 is `wrangler dev` running?");
+      submitBtn.disabled = false;
+    };
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const query = input.value.trim();
+    if (!query) return;
+    startSession(query);
+  });
+</script>
+</body>
+</html>
