@@ -1,10 +1,10 @@
 const OPENALEX_API_BASE = 'https://api.openalex.org/works';
 
-export async function getOpenAlexPopulationCount(query: string): Promise<number> {
+export async function getOpenAlexPopulationCount(query: string, mailto?: string): Promise<number> {
 	const url = new URL(OPENALEX_API_BASE);
 	url.searchParams.set('search', query);
 	url.searchParams.set('per-page', '1'); // we only need the count, not real records
-	url.searchParams.set('mailto', 'keira.j081@gmail.com'); // joins the polite pool
+	if (mailto) url.searchParams.set('mailto', mailto); // joins the polite pool (set OPENALEX_MAILTO in .dev.vars)
 
 	const response = await fetch(url.toString());
 

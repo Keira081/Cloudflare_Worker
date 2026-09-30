@@ -38,7 +38,7 @@ const OPENALEX_API_BASE = 'https://api.openalex.org/works';
 const BATCH_SIZE = 50;
 const MAX_ATTEMPTS = 3;
 
-export async function uniqueOpenalexBatch(query: string, seenTitles: Set<string>): Promise<FetchedObject> {
+export async function uniqueOpenalexBatch(query: string, seenTitles: Set<string>, mailto?: string): Promise<FetchedObject> {
 	let totalMatching = 0;
 	let discardedNoAbstract = 0;
 	let discardedDuplicates = 0;
@@ -51,7 +51,7 @@ export async function uniqueOpenalexBatch(query: string, seenTitles: Set<string>
 
 	while (papers.length < BATCH_SIZE && attempts < MAX_ATTEMPTS && !exhaustedPop) {
 		const remaining = BATCH_SIZE - papers.length;
-		const data = await fetchOpenAlexPapers(query, remaining);
+		const data = await fetchOpenAlexPapers(query, remaining, mailto);
 		const results = data.results;
 
 		for (const result of results) {
@@ -93,13 +93,13 @@ export async function uniqueOpenalexBatch(query: string, seenTitles: Set<string>
 	return { totalMatching, papers, discardedNoAbstract, discardedDuplicates, exhaustedPop };
 }
 
-export async function fetchOpenAlexPapers(query: string, remaining: number): Promise<OpenAlexResponse> {
+export async function fetchOpenAlexPapers(query: string, remaining: number, mailto?: string): Promise<OpenAlexResponse> {
 	const url = new URL(OPENALEX_API_BASE);
 	url.searchParams.set('search', query);
 	url.searchParams.set('filter', 'has_abstract:true');
 	url.searchParams.set('sample', String(remaining));
 	url.searchParams.set('per-page', String(remaining));
-	url.searchParams.set('mailto', 'keira.j081@gmail.com'); // joins the polite pool
+	if (mailto) url.searchParams.set('mailto', mailto); // joins the polite pool (set OPENALEX_MAILTO in .dev.vars)
 	url.searchParams.set('select', 'title,abstract_inverted_index,publication_year,open_access');
 
 	//

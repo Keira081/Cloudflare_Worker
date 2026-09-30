@@ -1,0 +1,3 @@
+# Copy to .dev.vars and fill in. .dev.vars is gitignored.
+# In production: npx wrangler secret put OPENALEX_MAILTO
+OPENALEX_MAILTO=you@example.com

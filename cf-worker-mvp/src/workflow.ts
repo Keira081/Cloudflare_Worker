@@ -11,6 +11,7 @@ type Params = {
 export interface Env {
 	SESSION_DO: DurableObjectNamespace<import('./session').SessionDO>;
 	AI: Ai;
+	OPENALEX_MAILTO?: string; // from .dev.vars locally, or `wrangler secret put OPENALEX_MAILTO`
 }
 
 export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
@@ -57,7 +58,7 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 		// 	batchNumber++;
 
 		// 	const fetchedBatch = await step.do('fetch-batch', async () => {
-		// 		const fetched = await uniqueOpenalexBatch(query, seenTitles);
+		// 		const fetched = await uniqueOpenalexBatch(query, seenTitles, this.env.OPENALEX_MAILTO);
 		// 		await sessionStub.pushUpdate(
 		// 			[
 		// 				`\n\nBatch ${batchNumber} - query: "${query}"`,

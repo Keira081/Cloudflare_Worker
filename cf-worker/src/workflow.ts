@@ -12,6 +12,7 @@ type Params = {
 export interface Env {
 	SESSION_DO: DurableObjectNamespace<import('./session').SessionDO>;
 	AI: Ai;
+	OPENALEX_MAILTO?: string; // from .dev.vars locally, or `wrangler secret put OPENALEX_MAILTO`
 }
 /**
  * Flow:
@@ -64,7 +65,7 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 
 			// counts.arxiv = await getArxivPopulationCount(sourceQueries.arxiv);
 			counts.arxiv = 100000;
-			counts.openalex = await getOpenAlexPopulationCount(sourceQueries.openalex);
+			counts.openalex = await getOpenAlexPopulationCount(sourceQueries.openalex, this.env.OPENALEX_MAILTO);
 			counts.semanticscholar = 100000;
 
 			console.log('Population counts:', counts);
