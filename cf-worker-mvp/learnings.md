@@ -1,10 +1,4 @@
-# Learnings — cf-worker-mvp
-
-Notes gathered from the comments in this project's source, grouped by topic.
-The source file each note came from is listed under each heading.
-Notes marked **Clarification** were added during this write-up. They answer open questions or fix small inaccuracies in the original comments.
-
----
+# Learnings from cf-worker-mvp
 
 ## 1. Cloudflare Workers basics
 
