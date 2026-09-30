@@ -1,3 +1,8 @@
+// ResearchWorkflow: the research pipeline for one query. Each step.do() is durable and retryable,
+// and progress is pushed back to the browser via RPC on the session's DO.
+// Helpful docs: https://developers.cloudflare.com/workflows/
+
+// ** The sections i'm referencing are in my design doc (not attached to this repo)
 import { WorkflowEntrypoint, WorkflowStep, WorkflowEvent } from 'cloudflare:workers';
 import { uniqueOpenalexBatch } from './sources/openalex';
 import type { Paper } from './sources/openalex';
@@ -19,28 +24,28 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 		const { query, sessionId } = event.payload;
 		const id = this.env.SESSION_DO.idFromString(sessionId);
 		const sessionStub = this.env.SESSION_DO.get(id);
-		// the running, accumulated set across every batch, keeping track of papers already touched
+
+		// is accumulated across all batches, holds titles already seen (for dedup)
 		const seenTitles = new Set<string>();
-		// the running, accumulated evidence set across every batch
+		// the evidence set (also accumulated across all batches)
 		const allPapers: Paper[] = [];
 
-		const ontology = step.do('generate-ontology', async () => {
+		// §4.4: runs once, before the loop, because the ontology doesn't change between batches.
+		const ontology = await step.do('generate-ontology', async () => {
 			return await generateOntologyObject(this.env.AI, query);
-		}); // §4.4 — Workers AI, schema-constrained Runs ONCE, before the loop —
-		//      the ontology doesn't change batch to batch, only how much has been
-		//      fetched from it does.
+		});
 
-		sessionStub.pushUpdate('ontology');
-		sessionStub.pushUpdate(await JSON.stringify(ontology));
+		await sessionStub.pushUpdate('ontology');
+		await sessionStub.pushUpdate(JSON.stringify(ontology, null, 2));
+
+		// ---- Batch loop ----
 		// const queries = expandOntologyToQueries(ontology); // plain code, deterministic
 		// const exhaustedQueries = new Set<string>();
 		// let queryIndex = 0;
 
 		// let saturated = false;
 		// let batchNumber = 0;
-		// ScheduledEvent;
-		// const MAX_BATCHES = 5; // placeholder ceiling until real saturation logic exists —
-		//                        prevents an infinite loop while §4.6/§4.7 aren't built yet.
+		// const MAX_BATCHES = 5; // ceiling until real saturation logic (§4.6/§4.7) exists
 
 		/**
 			let queryIndex = 0;
@@ -48,7 +53,7 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 			while (exhaustedQueries.has(queries[queryIndex])) {
 			queryIndex++;
 			if (queryIndex >= queries.length) {
-				queryIndex = 0; // wrap back to the start — the actual cycling behavior
+				queryIndex = 0; // wraps around to cycle through queries
 			}
 			}
 			const currentQuery = queries[queryIndex];
@@ -57,6 +62,7 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 		// while (!saturated && batchNumber < MAX_BATCHES) {
 		// 	batchNumber++;
 
+		// 	// §4.3: OpenAlex paginated fetch
 		// 	const fetchedBatch = await step.do('fetch-batch', async () => {
 		// 		const fetched = await uniqueOpenalexBatch(query, seenTitles, this.env.OPENALEX_MAILTO);
 		// 		await sessionStub.pushUpdate(
@@ -69,37 +75,27 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 		// 		);
 
 		// 		return fetched;
-		// 	}); // §4.3 — OpenAlex paginated fetch
+		// 	});
 
 		// 	for (const p of fetchedBatch.papers) {
 		// 		seenTitles.add(p.title.trim().toLowerCase());
 		// 	}
 		// 	allPapers.push(...fetchedBatch.papers);
 
-		// step.do(`embed-and-fuse-${batchNumber}`, ...)   // §4.5 — new hybrid retrieval module.
-		//   Ranks this batch's candidates against the ontology's terms via
-		//   embedding cosine similarity, fused with keyword confidence.
+		// step.do(`embed-and-fuse-${batchNumber}`, ...)   // §4.5: rank candidates vs ontology terms (embedding similarity + keyword score)
+		// step.do(`filter-relevance-${batchNumber}`, ...) // §4.6: drop anything below the fused-score cutoff
+		// step.do(`compute-stats-${batchNumber}`, ...)    // §4.7: Wilson interval, coverage, saturation rate (new relevant / examined)
 
-		// step.do(`filter-relevance-${batchNumber}`, ...) // §4.6 — deterministic threshold.
-		//   Drops anything below the fused-score cutoff; only survivors
-		//   get added to whatever the Stats Engine treats as real evidence.
-
-		// step.do(`compute-stats-${batchNumber}`, ...)    // §4.7 — Stats Engine.
-		//   Runs on `allPapers` as accumulated so far — Wilson interval,
-		//   coverage disclosure, and this batch's saturation rate
-		//   (new_unique_relevant_this_batch / candidates_examined_this_batch).
-
+		// §4.6: deterministic stop/continue
 		// const saturationCheck = await step.do(`check-saturation-${batchNumber}`, async () => {
 		//   ...compare saturation rate + Wilson interval width against thresholds...
 		//   return { saturated: boolean, reason: string };
-		// }); // §4.6 — deterministic stop/continue
+		// });
 		// saturated = saturationCheck.saturated;
 
-		// Temporary stand-in for the real saturation check above, so the
-		// loop is testable before §4.6/§4.7 exist:
+		// Temporary stop condition until §4.6/§4.7 exist: stop when the query has no results left.
 		// 	if (fetchedBatch.exhaustedPop) {
-		// 		saturated = true; // nothing left for this query — real stopping
-		// 		//                   signal we already built, worth honoring now
+		// 		saturated = true;
 		// 	}
 		// }
 
@@ -108,9 +104,7 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 		// 	return { papersFound: allPapers.length, batchesRun: batchNumber };
 		// });
 
-		// step.do('synthesize', ...) // §4.8 — Workers AI, schema-constrained,
-		//   causal-inference guardrail. Runs once, after the loop, on the
-		//   final accumulated allPapers + whatever the Stats Engine computed.
+		// step.do('synthesize', ...) // §4.8: schema-constrained LLM summary with causal-inference guardrail; runs once after the loop
 
 		// const summary = await step.do('summarize', async () => {
 		// 	await sessionStub.pushUpdate(`summary of results ...`);
@@ -120,6 +114,3 @@ export class ResearchWorkflow extends WorkflowEntrypoint<Env, Params> {
 		// return summary;
 	}
 }
-
-// Workflow Docs:   https://developers.cloudflare.com/workflows/
-// Getting started: https://developers.cloudflare.com/workflows/get-started/

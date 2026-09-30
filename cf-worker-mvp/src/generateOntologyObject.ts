@@ -1,11 +1,13 @@
-export type TopicObject = {
+// Expands a research query into topic clusters (concept + synonyms + methods) using Workers AI.
+// response_format forces the output to match the JSON schema below.
+export type TopicCluster = {
 	concept: string;
 	synonyms: string[];
 	methods: string[];
 };
 
 export type OntologyObject = {
-	topic: TopicObject[];
+	topics: TopicCluster[];
 };
 
 export async function generateOntologyObject(ai: Ai, query: string): Promise<OntologyObject> {
@@ -57,81 +59,22 @@ export async function generateOntologyObject(ai: Ai, query: string): Promise<Ont
 		},
 	});
 
-	// console.log(response.response);
-
 	console.log(JSON.stringify(response.response, null, 2));
 
 	return response.response;
 }
 
-// ("list every genuinely distinct synonym or near-synonym researchers commonly use for this concept — don't pad with filler, but don't stop at the first one either.");
-
-// query: Is there meaningful research combining large language models with formal verification?
-
-// response: {
-//   concepts: [ 'large language models', 'formal verification' ],
-//   methods: [ 'model checking', 'proof assistants' ],
-//   synonyms: [
-//     'natural language processing',
-//     'software verification',
-//     'AI safety'
-//   ]
-// }
-// ___________________________
-// query: Is there a real research base on AI applications in cybersecurity, or is it mostly speculative/position papers?
-
-// response:
-// ___________________________
-// query: How much overlap is there between mechanistic interpretability research and alignment research?
-
-// response: {
-//   concepts: [ 'mechanistic interpretability', 'alignment research' ],
-//   methods: [ 'comparative analysis', 'literature review' ],
-//   synonyms: [ 'explainability', 'value alignment', 'transparency' ]
-// }
-
-// query: What are the main topics and methods used in research papers related to AI x Cybersecurity
-
-// {
-//   topics: [
-//     {
-//       concept: "artificial intelligence",
-//       synonyms: ["AI", "machine intelligence"],
-//       methods: ["machine learning", "deep learning", "neural networks"]
-//     },
-//     {
-//       concept: "cybersecurity",
-//       synonyms: ["information security", "computer security", "network security"],
-//       methods: ["threat detection", "intrusion detection", "anomaly detection", "malware analysis"]
-//     }
-//   ]
-// }
-
-// {
-//   "topics": [
-//     {
-//       "concept": "AI",
-//       "methods": [
-//         {name: "machine learning", aliases: "ML"}
-//         {name: "deep learning", aliases: "DL"}
-//         {name: "natural language processing", aliases: "NLP"}
-//       ],
-//       "synonyms": [
-//         "artificial intelligence",
-//       ]
-//     },
-//     {
-//       "concept": "robotics",
-//       "methods": [
-//         "computer vision",
-//         "control systems",
-//         "human-robot interaction"
-//       ],
-//       "synonyms": [
-//         "robotics engineering",
-//         "mechatronics",
-//         "autonomous systems"
-//       ]
-//     }
-//   ]
-// }
+/**
+ * Example output: "What are the main topics and methods used in research papers related to AI x Cybersecurity"
+ * {
+ *   topics: [
+ *     { concept: 'artificial intelligence', synonyms: ['AI', 'machine intelligence'],
+ *       methods: ['machine learning', 'deep learning', 'neural networks'] },
+ *     { concept: 'cybersecurity', synonyms: ['information security', 'computer security', 'network security'],
+ *       methods: ['threat detection', 'intrusion detection', 'anomaly detection', 'malware analysis'] },
+ *   ]
+ * }
+ *
+ * Possible next step: methods as { name, aliases } so abbreviations are kept without duplicate entries,
+ * e.g. { name: 'machine learning', aliases: ['ML'] }
+ */

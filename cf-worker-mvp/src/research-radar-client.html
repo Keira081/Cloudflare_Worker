@@ -218,8 +218,7 @@
 </main>
 
 <script>
-  // Point this at wherever `wrangler dev` is actually serving the Worker.
-  // Defaults to the standard local port; change if yours differs.
+  // Where `wrangler dev` serves the Worker (default port 8787).
   const WORKER_WS_URL = "ws://127.0.0.1:8787";
 
   const logEl = document.getElementById("log");
@@ -251,12 +250,8 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  // The backend currently streams plain progress strings via pushUpdate().
-  // Synthesis (schema-constrained JSON) isn't built yet, so there's no real
-  // structured "this is the final report" signal from the server yet.
-  // This is a temporary heuristic bridging that gap — once Synthesis ships
-  // a real schema, swap this for checking the actual message shape instead
-  // of sniffing text content.
+  // Temporary: the server only sends plain progress strings, so a final report is guessed from
+  // the text. Replace with a check on the message shape once Synthesis (§4.8) returns JSON.
   function classifyMessage(raw) {
     try {
       const parsed = JSON.parse(raw);

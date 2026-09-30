@@ -1,41 +1,16 @@
 /**
- * How will we sample??
- * Problem with taking first X results from sources:
- *      API returns result in a certian order (likely most-recent-first)
- *      so it's not a random sample of everything they have on a related topic
- *      therefore taking the first x papers would overrepresent very new papers
- *      and underrepresent potentially foundational or other influential papers
- *      It wouldn't lead to an accurate represseentation of the actual trends in
- *      in the world
+ * Was the original approach- a fixed sample size from Cochran's formula.
+ * It was replaced by saturation-based batching, because Cochran's formula tells you how many
+ * random draws to take from a population you've already defined. It can't tell you whether
+ * you've found enough of the relevant papers.
  *
+ * Why random sampling: APIs return results in a set order (e.g. newest first), so taking the
+ * first X papers overrepresents new work and underrepresents foundational papers.
  *
- * Need a RANDOM sample
- *
- * Cochran's formula: n₀ = (Z² × p × (1-p)) / e²
- * Z - the z-score for your confidence level.
- * p - the estimated proportion of your population with whatever trait you're measuring.
- * e - your acceptable margin of error, as a decimal.
- * Questions it solves: What fraction of papers mention topic X
- * // Cochran's formula, standard 95% confidence, ±10% margin of error, p = 0.5
- *
- * How Do you determine margin of error?
- * - What's actually at stake if you're wron
- * - The cost of collecting more data
- *      * tighter margin gets exponentially more expensive snince e is squared in the denominator
- *
- * With known population:
- * n = n₀ / (1 + (n₀ - 1) / N)
- * Where N is the actual known population size for that stratum
- *
- */
-
-//Purpose of file
-/**
- * The Planner.
- * sources and sample size are both  determined by fixed config + Cochran's formula.
- *
- * Cochran's formula: n₀ = (Z² × p × (1-p)) / e²
- * standard 95% confidence, ±10% margin of error, p = 0.5
+ * Cochran's formula: n₀ = (Z² × p × (1 − p)) / e²
+ *   Z = z-score for the confidence level, p = expected proportion (0.5 is the most conservative),
+ *   e = margin of error. n grows with 1/e², so halving e quadruples the sample.
+ * Finite population correction (known population N): n = n₀ / (1 + (n₀ − 1) / N)
  */
 
 type Plan = {
@@ -45,12 +20,11 @@ type Plan = {
 
 const SOURCES = ['arxiv', 'openalex', 'semanticscholar'];
 
-// Cochran's formula, standard 95% confidence, ±10% margin of error, p = 0.5
+// 95% confidence, ±5% margin of error, p = 0.5
 const Z = 1.96;
 const P = 0.5;
 const E = 0.05;
-//                                      (Z² × p × (1-p)) / e²
-const COCHRAN_BASELINE = Math.ceil((Z ** 2 * P * (1 - P)) / E ** 2); // ≈ 97
+const COCHRAN_BASELINE = Math.ceil((Z ** 2 * P * (1 - P)) / E ** 2); // = 385 (would be 97 at E = 0.10)
 
 export function buildPlan(): Plan {
 	return {

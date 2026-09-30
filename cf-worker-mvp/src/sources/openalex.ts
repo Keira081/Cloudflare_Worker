@@ -9,10 +9,10 @@ export type Paper = {
 
 type FetchedObject = {
 	papers: Paper[];
-	totalMatching: number;
+	totalMatching: number; // OpenAlex's count of all works matching the query
 	discardedNoAbstract: number;
 	discardedDuplicates: number;
-	exhaustedPop: boolean;
+	exhaustedPop: boolean; // true once we've seen every matching work, meaning there's nothing left to fetch
 };
 
 type OpenAlexPaper = {
@@ -38,6 +38,11 @@ const OPENALEX_API_BASE = 'https://api.openalex.org/works';
 const BATCH_SIZE = 50;
 const MAX_ATTEMPTS = 3;
 
+/**
+ * Fetches up to BATCH_SIZE new papers, re-requesting (up to MAX_ATTEMPTS) to replace ones that
+ * were discarded. Skips papers without abstracts and duplicates, both from earlier batches
+ * (`seenTitles`) and within this batch (`reviewedTitles`), and counts why each was skipped.
+ */
 export async function uniqueOpenalexBatch(query: string, seenTitles: Set<string>, mailto?: string): Promise<FetchedObject> {
 	let totalMatching = 0;
 	let discardedNoAbstract = 0;
@@ -93,16 +98,15 @@ export async function uniqueOpenalexBatch(query: string, seenTitles: Set<string>
 	return { totalMatching, papers, discardedNoAbstract, discardedDuplicates, exhaustedPop };
 }
 
+// One request for a random sample of the remaining works matching the query.
 export async function fetchOpenAlexPapers(query: string, remaining: number, mailto?: string): Promise<OpenAlexResponse> {
 	const url = new URL(OPENALEX_API_BASE);
 	url.searchParams.set('search', query);
 	url.searchParams.set('filter', 'has_abstract:true');
-	url.searchParams.set('sample', String(remaining));
+	url.searchParams.set('sample', String(remaining)); // random sample, not the API's default ordering
 	url.searchParams.set('per-page', String(remaining));
-	if (mailto) url.searchParams.set('mailto', mailto); // joins the polite pool (set OPENALEX_MAILTO in .dev.vars)
-	url.searchParams.set('select', 'title,abstract_inverted_index,publication_year,open_access');
-
-	//
+	if (mailto) url.searchParams.set('mailto', mailto); // joins the polite pool (OPENALEX_MAILTO)
+	url.searchParams.set('select', 'title,abstract_inverted_index,publication_year,open_access'); // only the fields we use
 
 	console.log('url: ', url.toString());
 	const response = await fetch(url.toString());
@@ -122,6 +126,8 @@ export async function fetchOpenAlexPapers(query: string, remaining: number, mail
 	return data;
 }
 
+// OpenAlex stores abstracts as an inverted index ({ word: [positions] }).
+// This rebuilds the text by placing each word at its positions. Any gaps stay as '_'.
 export function reconstructAbstract(invertedIndex: Record<string, number[]>): string {
 	let highest = -1;
 	for (const [_, position] of Object.entries(invertedIndex)) {
