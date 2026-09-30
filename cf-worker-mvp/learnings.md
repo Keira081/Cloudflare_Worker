@@ -1,10 +1,4 @@
-# Learnings — cf-worker-mvp
-
-Notes gathered from the comments in this project's source, grouped by topic.
-The source file each note came from is listed under each heading.
-Notes marked **Clarification** were added during this write-up. They answer open questions or fix small inaccuracies in the original comments.
-
----
+# Learnings from cf-worker-mvp
 
 ## 1. Cloudflare Workers basics
 
@@ -12,15 +6,13 @@ Notes marked **Clarification** were added during this write-up. They answer open
 - **Wrangler**: the CLI that bundles the code, packages it with its config (`wrangler.jsonc`), and uploads it to Cloudflare's global network.
 - **Runtime**: the program that actually executes the code, the engine underneath. For Workers this is **`workerd`**.
 
-**Clarification:** the reason a Worker starts in under a millisecond, with no
-cold-start problem the way something like AWS Lambda has, comes from what
-kind of thing it actually is. It isn't a lightweight VM or container — it's
-a V8 **isolate**, the same sandboxing technology Chrome uses per browser
-tab. Booting a VM means loading an OS, then a runtime, then the app. An
-isolate doesn't boot anything; it's handed an already-parsed execution
-context. That's also why a Worker has no memory between invocations by
-default — each request gets a fresh isolate, not a resumed one — which is
-the entire reason Durable Objects (§3) exist as a separate primitive.
+A Worker ISN'T lightweight VM or container, it's
+a V8 **isolate** (same sandboxing technology Chrome uses per browser
+tab).
+Booting up a VM - loading an OS, then a runtime, then the app. 
+Isolates are handed an already-parsed execution context. That's also why a Worker has no memory between invocations by default, because each request gets a fresh isolate.
+
+Durable Objects (§3) exist to deal with memory problem.
 
 ### The `fetch` handler
 
@@ -38,7 +30,7 @@ It is called every time a request hits the Worker.
 | `env`     | Where **bindings** show up (DOs, Workflows, AI, vars…) |
 | `ctx`     | The execution context (e.g. `ctx.waitUntil()`)         |
 
-**Real example from this project (`src/index.ts`)** — routing a request to
+**Example from this project (`src/index.ts`)** - routing a request to
 either a test Workflow trigger or the right session's Durable Object:
 
 ```ts
@@ -99,8 +91,8 @@ export interface Env {
     Connection: Upgrade
     ```
   - The underlying TCP connection stays open and both sides can send messages.
-  - It is a single long-lived, **full-duplex** connection.
-    - **Clarification:** full-duplex means both sides can send at the same time, independently. This is true for WebSockets.
+  - It is a single long-lived, "**full-duplex**" connection.
+    - full-duplex - both sides can send at the same time, independently.
 
 ### TCP (Transmission Control Protocol)
 
@@ -113,18 +105,17 @@ export interface Env {
   2. Server → **SYN-ACK**: "Okay, acknowledged; here's mine."
   3. Client → **ACK**: "Got it, let's go."
 - **Sequence numbers**: every byte sent is numbered, so the receiver can reorder packets that arrive out of order.
-- **Acknowledgements**: every packet must be ACKed. Unacknowledged packets are retransmitted automatically, so data isn't silently lost.
+- **Acknowledgements**: every packet must be acknowledged. Unacknowledged packets are retransmitted automatically, so data isn't silently lost.
 - The WebSocket "upgrade" handshake is just an agreement between browser and server to **keep that same TCP connection open indefinitely** and stop treating it as one-request-one-response.
 - (TLS handshake and headers breakdown is still to be written up.)
 
-**Clarification — what a "frame" is, precisely.** Once the WebSocket
-connection is live, neither side sends full HTTP requests anymore — no
-method, URL, or headers per message. The unit of transmission is a
-**frame**: a small chunk of bytes with a compact header (length, whether the
+**Frames:** Once the WebSocket connection is live, neither side sends full 
+HTTP requests anymore. The unit of transmission is a **frame**.
+A small chunk of bytes with a compact header (length, whether the
 payload is text or binary, whether more frames are coming) followed by the
 payload itself. For almost everything in this project, one call to
 `.send()` is exactly one frame and fires exactly one `message` event on the
-other end — the protocol allows a single message to be split across
+other end. The protocol allows a single message to be split across
 multiple frames, but the browser's and Cloudflare's WebSocket APIs both
 reassemble those automatically before your code ever sees them.
 
@@ -137,16 +128,16 @@ Docs: https://developers.cloudflare.com/workers/runtime-apis/websockets/
 ### The problems they solve
 
 - Plain Workers have **no memory between invocations**.
-- There's **no single location**: you can't address a specific running Worker.
+- There's **no single location**: you can't "address" a specific running Worker.
 
 ### What Durable Objects provide
 
 - **Single-instance identity** through an ID.
 - **In-memory state**, plus **storage that survives restarts**.
-- This works by **pinning the instance to one physical location**. A Worker can be everywhere at once; a DO lives in one place.
+- This works by **pinning the instance to one physical location**. A Worker can be everywhere at once but a DO lives in one place.
   - The trade-off is **global distribution vs persistent memory**.
   - _Where does it get placed?_ Cloudflare creates the DO in the data center **closest to where the first request came from**.
-  - _Does low latency still apply?_ **Clarification:** it applies only partly. Users near the DO get low latency. Users far away pay a round trip to wherever the DO lives. The Worker still runs at the edge near the user and forwards the call to the DO.
+  - _Does low latency still apply to DOs?_ it applies only partly. Users near the DO get low latency. Users far away pay a round trip to wherever the DO lives. The Worker still runs at the edge near the user and forwards the call to the DO.
 
 ### Workers vs Durable Objects
 
@@ -158,7 +149,7 @@ Docs: https://developers.cloudflare.com/workers/runtime-apis/websockets/
 | State      | None between invocations                     | In-memory cache + attached durable storage                                                               |
 | Use it for | Stateless request handling, routing, fan-out | Anything that needs to be "the one place" something lives: sessions, counters, coordination, connections |
 
-\* **Clarification:** Cloudflare _may_ reuse a Worker isolate for later requests, but you can never **rely** on state surviving. For practical purposes, treat it as stateless.
+\* Cloudflare _may_ reuse a Worker isolate for later requests, but you can never **rely** on state surviving. For practical purposes, treat it as stateless.
 
 ### Addressing a DO: IDs and stubs
 
@@ -173,7 +164,7 @@ return stub.fetch(request);
 - `idFromString(idString)` rebuilds an ID from its string form (`ctx.id.toString()`). The Workflow uses this to find its way back to the session.
 - Every DO instance has a unique ID, available inside the class as `this.ctx.id`.
 
-**Clarification — why `idFromString` isn't just a type cast.** `idFromName`
+**why `idFromString` isn't just a type cast.** `idFromName`
 and `idFromString` are not interchangeable, even though both end up handing
 `.get()` a `DurableObjectId`. `idFromName` _hashes_ an arbitrary string into
 an ID — you're saying "derive an ID from this name." `idFromString` takes a
@@ -185,10 +176,10 @@ why the method lives on the specific namespace (`env.SESSION_DO.idFromString(...
 rather than being a free-standing function — a `DurableObjectId` is only
 meaningful relative to the class it belongs to.
 
-**Clarification — a stub doesn't validate anything.** `.get(id)` is cheap
+**A stub doesn't validate anything.** `.get(id)` is cheap
 and synchronous; it doesn't check whether that ID corresponds to a
 previously-used instance. If a `sessionId` were ever corrupted or
-mismatched, `.get()` wouldn't throw — it would silently hand back a stub for
+mismatched, `.get()` wouldn't throw an error, it would silently hand back a stub for
 a brand-new, empty instance, and the first sign of trouble would be missing
 state, not an error.
 
@@ -204,8 +195,7 @@ await this.ctx.storage.get<Type>('name');
 await this.ctx.storage.put('name', value);
 ```
 
-**Clarification — storage vs. in-memory state.** These are two genuinely
-different persistence layers, easy to conflate: a plain class property
+**storage vs. in-memory state.** A plain class property
 (`this.someArray = [...]`) survives hibernation but is wiped on a real
 restart or crash. `this.ctx.storage` is an actual attached SQLite database
 per instance — genuinely durable across restarts, not just hibernation.
@@ -247,9 +237,9 @@ const [client, server] = Object.values(new WebSocketPair());
 - **Splicing the client onto the network**: the runtime joins the `client` object to the real network socket.
 - Until you call `server.accept()` or `this.ctx.acceptWebSocket(server)`, the server end **exists but your code isn't wired up** to send or receive on it.
 
-**Clarification — what `WebSocketPair()` actually is before splicing.**
+**What `WebSocketPair()` is before splicing.**
 Before the 101 response is ever returned, `client` and `server` are just two
-JS objects wired to each other **inside the Worker's own memory** — nothing
+JS objects wired to each other **inside the Worker's own memory**, nothing
 about the browser is involved yet. `.send()` into one immediately fires a
 `message` event on the other, purely in-process. The `Response`'s
 `webSocket: client` field is the one moment this in-memory pipe gets joined
@@ -276,7 +266,7 @@ Both say: **keep the TCP connection open past the first response**. Normal Worke
 - What gets torn down: the class instance, its in-memory properties, and any local variables.
 - Anything that must survive has to live in `this.ctx.storage`.
 
-**Clarification — only the JS gets rebuilt, not the connection.** Easy to
+**Only the JS gets rebuilt, not the connection.** Easy to
 assume hibernation tears down and rebuilds "the whole thing," socket
 included — it doesn't. The browser never reconnects and there's no new
 handshake; the TCP connection is genuinely continuous the entire time. When
@@ -295,7 +285,7 @@ something your code has to re-establish.
   for (const ws of this.ctx.getWebSockets()) ws.send(text);
   ```
 
-**Clarification — why `webSocketMessage` never needs `getWebSockets()` but
+**why `webSocketMessage` never needs `getWebSockets()` but
 `pushUpdate` always does.** `webSocketMessage` is _reactive_: the runtime
 hands it the exact socket that triggered the call as a parameter, so
 replying to "whoever just spoke" needs no lookup. `pushUpdate` (the RPC
@@ -365,7 +355,7 @@ export class SessionDO extends DurableObject<Env> {
 
 The browser opens a WebSocket with a specific session ID, and that connection is handed to the DO for that ID. Multiple connections land in the **same DO's socket pool only if they used the same session ID** when connecting (e.g. two tabs sharing an ID).
 
-**Clarification — this is session-wide, not per-source or per-anything
+**This is session-wide, not per-source or per-anything
 else.** `seenTitles`/`getWebSockets()`-type state is scoped to _one shared
 Durable Object instance for the whole session_ — not per data source. Two
 different browser tabs sharing the same `sessionId` land in the same
@@ -397,13 +387,6 @@ ws.onmessage = (event) => console.log('Got back:', event.data);
 6. `ws.send(...)` from the browser is caught by `webSocketMessage`.
 7. `ws.onmessage` catches whatever the server sends back.
 
-**Clarification — a real bug this surfaced.** `new WebSocket(...)` is
-asynchronous; pasting all four console lines above as one block sometimes
-throws `InvalidStateError: Still in CONNECTING state` if `.send()` runs
-before the handshake actually finishes. Moving `ws.send(...)` _inside_ the
-`onopen` handler (as shown) guarantees it only fires once the socket is
-genuinely open.
-
 ---
 
 ## 5. Workflows: durable multi-step execution
@@ -414,75 +397,9 @@ genuinely open.
 - Design principle from the pipeline plan:
   - Work that **doesn't change batch to batch** (e.g. generating the ontology) runs **once, before the loop**.
   - Loop steps get **unique names per iteration** (`fetch-batch-${batchNumber}`) so each is tracked separately.
-    - **Clarification:** this turned out to be unnecessary — see 5.1 below.
   - Deterministic logic (threshold filtering, saturation checks) is plain code inside steps. LLM calls are kept schema-constrained.
 - A **safety ceiling** (`MAX_BATCHES`) prevents an infinite loop while the real stop condition (saturation) isn't built yet.
 - The Workflow talks back to the user through **RPC on the session DO**: `idFromString(sessionId)` → `get(id)` → `sessionStub.pushUpdate(...)`.
-
-### 5.1 Step names inside a loop — checked, not assumed
-
-Went in assuming `step.do()` calls inside a loop would need artificially
-unique names per iteration (`fetch-batch-${batchNumber}`) to avoid
-colliding with the durability/caching mechanism. Checked Cloudflare's own
-docs instead of assuming: `step.count` is documented specifically as
-"useful when running the same step in a loop," which means the engine
-already tracks each invocation of a _repeated literal name_ as its own
-distinct, correctly-ordered occurrence for replay purposes. The unique-name
-pattern isn't required — `step.do('fetch-batch', ...)` called five times in
-a `while` loop is the supported, intended shape.
-
-### 5.2 What "durable" actually promises — a real bug
-
-The most important thing learned about Workflows, found by actually hitting
-it: **`step.do()` only durably checkpoints its return value.** Nothing else
-that happens inside the callback is trusted to have occurred at all, once
-that step becomes a cache hit on a replay (e.g. because a _later_ step
-failed and the whole `run()` re-executes from the top).
-
-This surfaced as a real bug while building a `seenTitles` set to
-deduplicate papers across fetch batches:
-
-```ts
-// WRONG — mutating shared state inside the step callback
-const batch = await step.do('fetch-batch', async () => {
-	const result = await uniqueOpenalexBatch(query, seenTitles);
-	for (const p of result.papers) seenTitles.add(p.title); // lost on replay!
-	return result;
-});
-```
-
-If this step is later replayed as a cache hit, the callback — and every
-`seenTitles.add(...)` call inside it — simply does not run again. The set
-doesn't "revert" to an earlier state; it silently ends up **missing entries
-it should have**, since those adds never happened a second time.
-
-**Fix:** move the mutation to plain code in `run()`'s body, _outside_ any
-`step.do()`, deterministically rebuilding it from the step's already-durable
-return value:
-
-```ts
-const seenTitles = new Set<string>();
-
-const batch1 = await step.do('fetch-batch', async () => {
-	return await uniqueOpenalexBatch(query, seenTitles); // only reads
-});
-for (const p of batch1.papers) {
-	seenTitles.add(p.title.trim().toLowerCase()); // the ONLY place that writes
-}
-```
-
-Plain code in `run()`'s body always re-executes on a replay — so as long as
-it's deterministically derived from a step's return value, it produces the
-identical result whether that step just ran live or was served from cache.
-
-**The mirror-image bug**, also hit while building the same feature: a
-function's own internal retry loop mutating the _caller's_ shared state
-directly. If that function throws partway through a retry attempt, the
-mutation that already happened doesn't roll back just because the function
-threw — objects don't undo themselves on an exception. Fixed by giving the
-retry loop its own function-scoped, throwaway tracking set, and having it
-only ever _read_ the caller's real `seenTitles`, never write to it until a
-result is actually ready to return.
 
 ### Config
 
@@ -504,19 +421,6 @@ Docs: https://developers.cloudflare.com/workflows/ · Getting started: https://d
 - Called with `ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', { messages, response_format })`.
 - `response_format: { type: 'json_schema', json_schema: {...} }` forces the output to match a JSON schema.
 
-**Clarification — a schema constrains generation, it doesn't just ask
-nicely.** Before using `response_format`, asking the model in plain prose to
-"respond with a JSON object containing X" produced a real response that
-included several paragraphs of prose, a markdown code fence, and — once —
-an unrelated chunk of Python. `response_format` is a mechanically different
-guarantee: it constrains which tokens the model is allowed to generate at
-every step, not a more strongly-worded version of the same request.
-
-**What a schema does _not_ guarantee:** shape, not sanity. A schema-valid
-`sampleSize: 4` came back at one point — a real, correctly-typed number,
-just a useless one. This is exactly why sample-size logic belongs in
-deterministic code (§7), never a prompt, however carefully worded.
-
 ### Prompt-engineering lessons from the test runs
 
 - **Name the downstream use.** Saying "these terms become search queries, so a missing synonym is a paper never found" makes the model more thorough.
@@ -525,64 +429,6 @@ deterministic code (§7), never a prompt, however carefully worded.
 - **Give a worked example** ("AI applied to cybersecurity" → 2 clusters, not 5).
 - **Ban filler**: no padding, no abbreviation duplicates, and no generic words like "research", "study", "analysis".
 - **Shape the schema to the problem.** A flat `{concepts, methods, synonyms}` mixed terms across topics. Moving to `topics: [{concept, synonyms, methods}]` kept each term attached to its concept.
-
-**Full working schema and prompt (`src/generateOntologyObject.ts`):**
-
-```ts
-export type TopicObject = {
-	concept: string;
-	synonyms: string[];
-	methods: string[];
-};
-
-export type OntologyObject = {
-	topics: TopicObject[];
-};
-
-export async function generateOntologyObject(ai: Ai, query: string): Promise<OntologyObject> {
-	const response = await ai.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-		messages: [
-			{
-				role: 'system',
-				content:
-					'This system is for academic and scientific literature search. ' +
-					'You expand a research query into one or more topic clusters, each with a canonical concept, its synonyms, and related methods. ' +
-					'These terms are combined into search queries against academic databases — a synonym or method you leave out is a paper the search will never find. ' +
-					"Create exactly one topic cluster per distinct subject explicitly named in the query — never split a single named subject into multiple clusters, and never create a cluster for something the query didn't name as its own topic. " +
-					'A narrower technique, application, or subtopic belongs inside its parent topic\'s "methods" list, not as its own cluster. ' +
-					'These clusters are combined with AND when searching, so inventing extra clusters makes the search overly narrow and can return almost nothing. ' +
-					'A synonym is a term you could substitute for the concept in a sentence and mean the exact same thing — not a related field, a parent/broader field, or something that commonly overlaps with it. ' +
-					'Avoid generic words that describe every academic paper rather than this specific topic — "research," "study," "analysis," or "paper" are never useful concepts, synonyms, or methods on their own. ' +
-					'Keep each entry short — a few words, not a sentence.',
-			},
-			{ role: 'user', content: `Topic: "${query}"` },
-		],
-		response_format: {
-			type: 'json_schema',
-			json_schema: {
-				type: 'object',
-				properties: {
-					topics: {
-						type: 'array',
-						items: {
-							type: 'object',
-							properties: {
-								concept: { type: 'string' },
-								synonyms: { type: 'array', items: { type: 'string' } },
-								methods: { type: 'array', items: { type: 'string' } },
-							},
-							required: ['concept', 'synonyms', 'methods'],
-						},
-					},
-				},
-				required: ['topics'],
-			},
-		},
-	});
-
-	return response.response as OntologyObject;
-}
-```
 
 Example input/output pair from real testing:
 
@@ -639,20 +485,12 @@ this problem is as much a real learning as the fix itself.
 - **Choosing the margin of error** depends on:
   - what's at stake if you're wrong
   - the cost of collecting more data. A tighter margin gets expensive fast because e is squared in the denominator.
-    - **Clarification:** the growth is _quadratic_, not exponential. Halving e multiplies n by 4 (97 at e=0.10, 385 at e=0.05).
+    - the growth is _quadratic_, not exponential. Halving e multiplies n by 4 (97 at e=0.10, 385 at e=0.05).
 
 **Finite population correction**, for when the population size N for a
 stratum is known:
 
 **n = n₀ / (1 + (n₀ − 1) / N)**
-
-> **Clarification (the comments and code disagreed):** the comments said
-> "±10% margin of error … ≈ 97", but the code at one point set `E = 0.05`
-> (±5%, ≈ 385). This wasn't a bug so much as an intermediate state while
-> deciding on the right default — resolved by moving off Cochran entirely
-> (§7.3), so the discrepancy no longer matters for the live code path.
-> `methodologyGuard.ts`, which contains this formula, is kept in the repo
-> as a record of the decision but is no longer called from anywhere.
 
 **Why this formula turned out to be the wrong tool, found by actually
 questioning the numbers it produced:** run the formula against a real
@@ -722,8 +560,7 @@ duplicates, a batch of entirely unique, on-topic papers can still represent
 almost no _new information_, if they're all reinforcing ground already
 well-covered by earlier batches.
 
-**A clarification worth being explicit about, since it's easy to
-misread:** dropping Cochran did _not_ mean discarding papers that cover
+Dropping Cochran did _not_ mean discarding papers that cover
 similar ground to ones already found. Two genuinely distinct papers that
 happen to reach similar conclusions are both real, independent evidence of
 how much attention a topic is getting — they should both be counted, not
@@ -794,7 +631,7 @@ dominating.
 - **Deduplicate by normalized title** (`trim().toLowerCase()`), both across batches (`seenTitles`) and within a batch (`reviewedTitles`).
 - **Track why things were discarded** (no abstract, duplicate) and whether the population is exhausted. These numbers feed the coverage disclosure later.
 
-**Clarification — OpenAlex's default ordering is relevance-sorted, not
+**OpenAlex's default ordering is relevance-sorted, not
 random.** Without `sample`, `search=` results come back ranked by a
 `relevance_score` — paginating through them, however deep, just walks down
 that same ranking; it never becomes a random draw. Relevance-sorting
@@ -804,7 +641,7 @@ wording, potentially under-representing papers that are genuinely on-topic
 but phrased differently. `sample=N` (optionally with a fixed `seed` for a
 reproducible, paginate-able draw) is what actually fixes this.
 
-**Clarification — a genuinely random draw can still need irrelevant
+**A genuinely random draw can still need irrelevant
 candidates filtered out.** Switching from relevance-sorted pagination to
 true random sampling removes an _implicit_ side-benefit relevance-sorting
 happened to provide: weak matches used to be effectively hidden by ranking
@@ -814,7 +651,7 @@ regression — it's exactly the job the Relevance Filter (§7.3, downstream of
 retrieval) exists to do deliberately and inspectably, rather than relying on
 an accidental side effect of a biased sort order.
 
-**Clarification — a "successful" API response can still describe a
+**A "successful" API response can still describe a
 failure.** Hit this directly with arXiv (a different source used elsewhere
 in the larger project): a malformed query returned HTTP 200 with
 well-formed XML, `<opensearch:totalResults>1</opensearch:totalResults>`,
@@ -831,27 +668,7 @@ before checking `response.status` directly settled it.
 
 ---
 
-## 9. Wrangler config quick reference
-
-| Key                            | Purpose                                       |
-| ------------------------------ | --------------------------------------------- |
-| `main`                         | Entry file (`src/index.ts`)                   |
-| `compatibility_date`           | Pins runtime behavior to a date               |
-| `observability.enabled`        | Logs/traces in the dashboard                  |
-| `durable_objects.bindings`     | `name` (on `env`) → `class_name`              |
-| `migrations`                   | Storage backend per DO class (SQLite)         |
-| `workflows`                    | `binding` (on `env`) → `class_name`           |
-| `ai.binding`                   | Workers AI on `env.AI`                        |
-| `placement: { mode: "smart" }` | Smart Placement (optional)                    |
-| `vars` / secrets               | Env variables; use secrets for sensitive data |
-| `assets`                       | Static assets binding                         |
-| `services`                     | Service bindings between Workers              |
-
-Bindings docs: https://developers.cloudflare.com/workers/runtime-apis/bindings/
-
----
-
-## 10. Things considered and deliberately not built
+## 9. Things considered and deliberately not built
 
 Worth a real answer for "why not X," rather than leaving a silent gap:
 
