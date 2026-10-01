@@ -1,5 +1,43 @@
 # Learnings from cf-worker-mvp
 
+## Contents
+
+1. [Cloudflare Workers basics](#1-cloudflare-workers-basics)
+   - [The `fetch` handler](#the-fetch-handler)
+   - [The `Env` interface](#the-env-interface)
+2. [Networking fundamentals: HTTP, TCP, WebSockets](#2-networking-fundamentals-http-tcp-websockets)
+   - [Fetch request vs WebSocket](#fetch-request-vs-websocket)
+   - [TCP (Transmission Control Protocol)](#tcp-transmission-control-protocol)
+3. [Durable Objects: giving the Worker memory](#3-durable-objects-giving-the-worker-memory)
+   - [The problems they solve](#the-problems-they-solve)
+   - [What Durable Objects provide](#what-durable-objects-provide)
+   - [Workers vs Durable Objects](#workers-vs-durable-objects)
+   - [Addressing a DO: IDs and stubs](#addressing-a-do-ids-and-stubs)
+   - [Two ways to talk to a DO](#two-ways-to-talk-to-a-do)
+   - [Storage](#storage)
+   - [Config: migrations (`wrangler.jsonc`)](#config-migrations-wranglerjsonc)
+4. [WebSockets inside a Durable Object](#4-websockets-inside-a-durable-object)
+   - [`WebSocketPair`](#websocketpair)
+   - [`server.accept()` vs `this.ctx.acceptWebSocket(server)`](#serveraccept-vs-thisctxacceptwebsocketserver)
+   - [Hibernation](#hibernation)
+   - [Hibernation handler methods (called by the runtime)](#hibernation-handler-methods-called-by-the-runtime)
+   - [When would one DO have multiple sockets?](#when-would-one-do-have-multiple-sockets)
+   - [When is a plain Worker enough?](#when-is-a-plain-worker-enough)
+   - [End-to-end flow (testing from the browser console)](#end-to-end-flow-testing-from-the-browser-console)
+5. [Workflows: durable multi-step execution](#5-workflows-durable-multi-step-execution)
+   - [Config](#config)
+6. [Workers AI: schema-constrained generation](#6-workers-ai-schema-constrained-generation)
+   - [Prompt-engineering lessons from the test runs](#prompt-engineering-lessons-from-the-test-runs)
+7. [Statistical methodology](#7-statistical-methodology)
+   - [7.1 Why not take the first X results?](#71-why-not-take-the-first-x-results)
+   - [7.2 Cochran's formula (superseded)](#72-cochrans-formula-superseded--see-73)
+   - [7.3 Saturation-based evidence gathering (current approach)](#73-saturation-based-evidence-gathering-current-approach)
+   - [7.4 Wilson score interval](#74-wilson-score-interval)
+   - [7.5 Benjamini–Hochberg (BH) correction](#75-benjaminihochberg-bh-correction)
+   - [7.6 Shannon diversity index](#76-shannon-diversity-index)
+8. [External APIs: OpenAlex (and lessons from arXiv)](#8-external-apis-openalex-and-lessons-from-arxiv)
+9. [Things considered and deliberately not built](#9-things-considered-and-deliberately-not-built)
+
 ## 1. Cloudflare Workers basics
 
 - **Worker**: plain JavaScript/TypeScript that runs on Cloudflare's edge.
